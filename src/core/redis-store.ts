@@ -33,6 +33,15 @@ export class RedisStore {
     await this.client.del(this.key('schedule-lock', jobKey, runId));
   }
 
+  /** Tooling-only: clear sent/processing markers so a deliveryId can be resent. */
+  async clearDelivery(deliveryId: string): Promise<void> {
+    await this.client.del(this.key('delivery', deliveryId), this.key('processing', deliveryId));
+  }
+
+  async clearRunCounters(runId: string): Promise<void> {
+    await this.client.del(this.key('run', runId));
+  }
+
   async claimDelivery(deliveryId: string, owner: string): Promise<boolean> {
     const result = await this.client.eval(
       CLAIM_SCRIPT,

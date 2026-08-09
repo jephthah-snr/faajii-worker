@@ -15,7 +15,11 @@ export class DeliveryWorker {
 
   private async handle(message: NotificationMessage, raw: ConsumeMessage): Promise<void> {
     const owner = randomUUID();
-    if (!(await this.redis.claimDelivery(message.deliveryId, owner))) { this.rabbit.ack(raw); return; }
+    if (!(await this.redis.claimDelivery(message.deliveryId, owner))) {
+      logger.info({ deliveryId: message.deliveryId, runId: message.runId }, 'Delivery skipped; already sent or in progress');
+      this.rabbit.ack(raw);
+      return;
+    }
     try {
       const providerId = message.channel === 'email' ? await this.email.send(message) : await this.sms.send(message);
       if (!(await this.redis.completeDelivery(message.deliveryId, message.runId, owner))) throw new Error('Delivery ownership expired before completion');

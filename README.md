@@ -97,8 +97,9 @@ the calculated digest window and creates a deterministic run ID.
 { "scheduledAt": "2026-08-10T08:00:00.000Z" }
 ```
 
-To rerun the same `scheduledAt` after a previous attempt still holds the Redis
-scheduler lock, pass `"force": true` (tooling only).
+To rerun the same `scheduledAt` after a previous attempt, pass `"force": true`
+(tooling only). That clears the scheduler lock, run counters, and per-delivery
+Redis “already sent” markers so dry-run checkpoints do not block real sends.
 
 ```json
 { "scheduledAt": "2026-08-14T08:00:00.000Z", "force": true }

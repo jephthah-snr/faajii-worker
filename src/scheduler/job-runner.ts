@@ -27,7 +27,11 @@ export class JobRunner {
     const runId = createRunId(job.key, scheduledInstant);
     if (options.force) {
       await this.redis.releaseSchedulerLock(job.key, runId);
-      logger.warn({ jobKey: job.key, runId }, "Scheduler lock force-released for tooling rerun");
+      await this.redis.clearRunCounters(runId);
+      logger.warn(
+        { jobKey: job.key, runId },
+        "Scheduler lock and run counters force-cleared for tooling rerun"
+      );
     }
     if (!(await this.redis.acquireSchedulerLock(job.key, runId, 3600))) {
       logger.info(
@@ -104,9 +108,11 @@ export class JobRunner {
         for (const channel of job.channels) {
           if (channel === "email" && !recipient.email) continue;
           if (channel === "sms" && !recipient.phone) continue;
+          const deliveryId = createDeliveryId(runId, recipient.id, channel);
+          if (options.force) await this.redis.clearDelivery(deliveryId);
           const message: NotificationMessage = {
             schemaVersion: 1,
-            deliveryId: createDeliveryId(runId, recipient.id, channel),
+            deliveryId,
             runId,
             jobKey: job.key,
             channel,
