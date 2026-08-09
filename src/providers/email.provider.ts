@@ -4,6 +4,12 @@ import { NotificationMessage } from '../core/types.js';
 import { renderTemplate } from './template.js';
 import { logger } from '../core/logger.js';
 
+function zeptoAuthorization(token: string): string {
+  const trimmed = token.trim();
+  if (/^zoho-enczapikey\s+/i.test(trimmed)) return trimmed;
+  return `Zoho-enczapikey ${trimmed}`;
+}
+
 export class EmailProvider {
   async send(message: NotificationMessage): Promise<string> {
     if (!message.recipient.email) throw new Error('Recipient has no email address');
@@ -18,7 +24,13 @@ export class EmailProvider {
       subject,
       textbody: text,
       htmlbody: html || `<p>${text}</p>`,
-    }, { headers: { Authorization: config.MAIL_API_TOKEN, 'Content-Type': 'application/json' }, timeout: config.HTTP_TIMEOUT_MS });
+    }, {
+      headers: {
+        Authorization: zeptoAuthorization(config.MAIL_API_TOKEN),
+        'Content-Type': 'application/json',
+      },
+      timeout: config.HTTP_TIMEOUT_MS,
+    });
     return String(response.data?.request_id || response.headers['x-request-id'] || message.deliveryId);
   }
 }
