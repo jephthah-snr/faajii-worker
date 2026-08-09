@@ -47,10 +47,28 @@ const esc = (value: unknown) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
+/** Collapse whitespace and truncate for a 2–3 line card blurb. */
+export function truncateDescription(
+  value: string | null | undefined,
+  maxLength = 96
+): string {
+  const normalized = String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return "";
+  if (normalized.length <= maxLength) return normalized;
+  const sliced = normalized.slice(0, maxLength - 1);
+  const lastSpace = sliced.lastIndexOf(" ");
+  const cut = lastSpace > 40 ? sliced.slice(0, lastSpace) : sliced;
+  return `${cut}…`;
+}
+
 export function buildDigestTemplate(input: {
   type: DigestType;
   runId: string;
   publicUrl: string;
+  /** RSVP web origin for event CTAs, e.g. https://faajii.rsvp */
+  rsvpPublicUrl?: string;
   appStoreUrl?: string;
   playStoreUrl?: string;
   facebookUrl?: string;
@@ -71,29 +89,44 @@ export function buildDigestTemplate(input: {
       ? "It’s Monday. Unwind with Faajii."
       : "It’s the weekend. Here’s what we prepared for you.");
   const publicUrl = input.publicUrl.replace(/\/$/, "");
-  const enriched = input.events.map((event) => ({
-    ...event,
-    ctaUrl: `${publicUrl}/${encodeURIComponent(event.identifier)}?${
-      event.hasTickets ? "showTickets=true" : "rsvp=true"
-    }&utm_source=email&utm_campaign=${encodeURIComponent(input.runId)}`,
-  }));
+  const rsvpPublicUrl = (input.rsvpPublicUrl || publicUrl).replace(/\/$/, "");
+  const exploreUrl = `${publicUrl}?utm_source=email&utm_campaign=${encodeURIComponent(
+    input.runId
+  )}&utm_content=explore_more`;
+  const enriched = input.events.map((event) => {
+    const slug = String(event.identifier || "")
+      .trim()
+      .replace(/^\/+|\/+$/g, "");
+    const pathSlug = encodeURIComponent(slug);
+    return {
+      ...event,
+      blurb: truncateDescription(event.description),
+      // e.g. https://faajii.rsvp/byob
+      ctaUrl: `${rsvpPublicUrl}/${pathSlug}?utm_source=email&utm_campaign=${encodeURIComponent(
+        input.runId
+      )}`,
+    };
+  });
+
+  // Card image/content width 264px (+4px vs previous 260). CTA sits outside the bordered card.
   const cards = enriched
-    .map(
-      (event) =>
-        `<td width="50%" valign="top" style="width:50%;padding:10px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #eeeeee;border-radius:12px;overflow:hidden;"><tr><td><img src="${esc(
-          event.imageUrl
-        )}" alt="${esc(
-          event.name
-        )}" width="260" style="display:block;width:100%;max-width:260px;height:220px;object-fit:cover;border:0;" /></td></tr><tr><td style="padding:10px 10px 4px;font:700 15px Arial;color:#111111;">${esc(
-          event.name
-        )}</td></tr><tr><td style="padding:0 10px 10px;font:12px/17px Arial;color:#555555;">${esc(
-          event.location
-        )}</td></tr><tr><td align="center" style="padding:4px 10px 14px;"><a href="${esc(
-          event.ctaUrl
-        )}" style="display:block;padding:11px 16px;background:#000;color:#fff;text-decoration:none;border-radius:24px;font:700 13px Arial;">${
-          event.hasTickets ? "Get Ticket" : "RSVP Now"
-        }</a></td></tr></table></td>`
-    )
+    .map((event) => {
+      const ctaLabel = event.hasTickets ? "Get Ticket" : "RSVP Now";
+      const blurb = event.blurb
+        ? `<tr><td style="padding:0 12px 14px;font:12px/17px Arial,sans-serif;color:#555555;">${esc(
+            event.blurb
+          )}</td></tr>`
+        : "";
+      return `<td class="event-cell" width="50%" valign="top" style="width:50%;padding:10px 8px 18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;max-width:264px;margin:0 auto;"><tr><td style="border:1px solid #eeeeee;border-radius:12px;overflow:hidden;background:#ffffff;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td><img src="${esc(
+        event.imageUrl
+      )}" alt="${esc(
+        event.name
+      )}" width="264" style="display:block;width:100%;max-width:264px;height:220px;object-fit:cover;border:0;" /></td></tr><tr><td style="padding:12px 12px 6px;font:700 15px/20px Arial,sans-serif;color:#111111;">${esc(
+        event.name
+      )}</td></tr>${blurb}</table></td></tr><tr><td align="center" style="padding:12px 0 0;"><a href="${esc(
+        event.ctaUrl
+      )}" style="display:inline-block;min-width:132px;padding:10px 22px;background:#000000;color:#ffffff;text-decoration:none;border-radius:999px;font:700 13px/16px Arial,sans-serif;text-align:center;">${ctaLabel}</a></td></tr></table></td>`;
+    })
     .reduce<string[]>((rows, card, index) => {
       if (index % 2 === 0) rows.push(`<tr>${card}`);
       else rows[rows.length - 1] += `${card}</tr>`;
@@ -103,11 +136,12 @@ export function buildDigestTemplate(input: {
       row.endsWith("</tr>") ? row : `${row}<td width="50%"></td></tr>`
     )
     .join("");
-  const body = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td class="email-padding" style="padding:42px 30px 16px;font-size:18px;color:#111111;">Hi {{ firstName }},</td></tr><tr><td class="email-padding" style="padding:16px 30px 24px;font-size:21px;line-height:29px;color:#111111;">${esc(
+
+  const body = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td class="email-padding" style="padding:42px 30px 16px;font:18px/26px Arial,sans-serif;color:#111111;">Hi {{ firstName }},</td></tr><tr><td class="email-padding" style="padding:0 30px 28px;font:21px/29px Arial,sans-serif;color:#111111;">${esc(
     headline
-  )}</td></tr><tr><td align="center" style="padding:0 30px 26px;"><a href="${esc(
-    publicUrl
-  )}" style="display:inline-block;min-width:230px;padding:12px 22px;background:#000;color:#fff;text-decoration:none;border-radius:24px;font:700 13px Arial,sans-serif;">See More</a></td></tr><tr><td style="padding:0 20px 38px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${cards}</table></td></tr></table>`;
+  )}</td></tr><tr><td style="padding:0 18px 8px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${cards}</table></td></tr><tr><td align="center" style="padding:8px 30px 40px;"><a href="${esc(
+    exploreUrl
+  )}" style="color:#2563eb;font:700 15px/20px Arial,sans-serif;text-decoration:underline;">Explore more</a></td></tr></table>`;
 
   return {
     subject,
@@ -123,6 +157,6 @@ export function buildDigestTemplate(input: {
     }),
     text: `${headline}\n\n${enriched
       .map((event) => `${event.name}: ${event.ctaUrl}`)
-      .join("\n")}`,
+      .join("\n")}\n\nExplore more: ${exploreUrl}`,
   };
 }

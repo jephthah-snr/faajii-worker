@@ -72,6 +72,7 @@ export class JobRunner {
         type: job.digestType,
         runId,
         publicUrl: config.APP_PUBLIC_URL,
+        rsvpPublicUrl: config.RSVP_PUBLIC_URL,
         appStoreUrl: config.APP_STORE_URL,
         playStoreUrl: config.PLAY_STORE_URL,
         facebookUrl: config.FACEBOOK_URL,

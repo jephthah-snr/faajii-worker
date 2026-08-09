@@ -11,6 +11,8 @@ const event = (id: number): DigestCandidate => ({
   eventId: `public-${id}`,
   identifier: `event-${id}`,
   name: `Event ${id}`,
+  description:
+    "Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text.",
   imageUrl: `https://images.test/${id}.jpg`,
   startDate: "2026-08-10T12:00:00.000Z",
   location: "Lagos",
@@ -48,5 +50,34 @@ describe("digest curation", () => {
     expect(template.html).toContain("Handle, plan, discover and share events");
     expect(template.html).toContain("Download on the App Store");
     expect(template.html).toContain("Faajii. All rights reserved.");
+  });
+
+  it("places CTAs outside cards, uses truncated descriptions, and links Explore more", () => {
+    const template = buildDigestTemplate({
+      type: "friday",
+      runId: "friday-digest:test",
+      publicUrl: "https://faajii.app",
+      rsvpPublicUrl: "https://faajii.rsvp",
+      events: Array.from({ length: 6 }, (_, index) => event(index + 1)),
+    });
+    expect(template.html).not.toContain(">See More</a>");
+    expect(template.html).toContain("max-width:264px");
+    expect(template.html).toContain("Explore more");
+    expect(template.html).toContain(
+      "https://faajii.app?utm_source=email&amp;utm_campaign=friday-digest%3Atest&amp;utm_content=explore_more"
+    );
+    expect(template.html).toContain(
+      "https://faajii.rsvp/event-1?utm_source=email&amp;utm_campaign=friday-digest%3Atest"
+    );
+    expect(template.html).toContain(
+      "https://faajii.rsvp/event-2?utm_source=email&amp;utm_campaign=friday-digest%3Atest"
+    );
+    expect(template.html).toContain("Lorem Ipsum is simply dummy text");
+    // CTA sits in a row after the bordered card closes.
+    expect(template.html).toContain(
+      '</table></td></tr><tr><td align="center" style="padding:12px 0 0;"><a href='
+    );
+    // Location must not be used as the card blurb when description exists.
+    expect(template.html).not.toContain(">Lagos</td>");
   });
 });

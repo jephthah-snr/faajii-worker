@@ -24,6 +24,8 @@ const schema = z.object({
   BACKEND_BASE_URL: z.string().url(),
   BACKEND_WORKER_API_KEY: z.string().min(1),
   APP_PUBLIC_URL: z.string().url().default("https://faajii.app"),
+  /** Public RSVP web base used for digest Get Ticket / RSVP Now links (e.g. https://faajii.rsvp). */
+  RSVP_PUBLIC_URL: z.string().url().default("https://faajii.rsvp"),
   APP_STORE_URL: z.string().url().optional(),
   PLAY_STORE_URL: z.string().url().optional(),
   FACEBOOK_URL: z.string().url().optional(),
