@@ -1,4 +1,4 @@
-export type Channel = 'email' | 'sms';
+export type Channel = "email" | "sms";
 
 export interface Recipient {
   id: string;
@@ -26,4 +26,24 @@ export interface RecipientPage {
   recipients: Recipient[];
   nextCursor?: string | null;
   template: { subject?: string; html?: string; text: string };
+}
+
+export interface DigestCandidate {
+  id: number;
+  eventId: string;
+  identifier: string;
+  name: string;
+  description?: string | null;
+  imageUrl: string;
+  startDate: string;
+  location: string;
+  rsvpCount: number;
+  hasTickets: boolean;
+}
+
+export interface DigestRunData {
+  subject?: string | null;
+  headline?: string | null;
+  overrides: Array<{ eventId: number; position: number; isPinned: boolean }>;
+  candidates: DigestCandidate[];
 }

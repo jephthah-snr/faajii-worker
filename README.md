@@ -31,18 +31,28 @@ GET {recipientPath}?runId=...&scheduledAt=...&cursor=...&limit=250
 x-worker-api-key: ...
 ```
 
+For digest jobs, the worker calculates the date window and fetches current event
+data through `digestDataPath`. It merges the admin overrides, builds the email,
+and persists the frozen result through `digestSnapshotPath` before requesting
+recipients.
+
 Expected response:
 
 ```json
 {
   "data": {
-    "recipients": [{
-      "id": "42",
-      "email": "person@example.com",
-      "phone": "+2348012345678",
-      "timezone": "Africa/Lagos",
-      "templateData": { "firstName": "Ada", "event": { "title": "Faajii Night" } }
-    }],
+    "recipients": [
+      {
+        "id": "42",
+        "email": "person@example.com",
+        "phone": "+2348012345678",
+        "timezone": "Africa/Lagos",
+        "templateData": {
+          "firstName": "Ada",
+          "event": { "title": "Faajii Night" }
+        }
+      }
+    ],
     "nextCursor": null,
     "template": {
       "subject": "Reminder: {{ event.title }}",
@@ -65,6 +75,25 @@ docker compose up --build
 
 Health: `GET http://localhost:8090/health`  
 RabbitMQ UI: `http://localhost:15672` (`guest` / `guest` locally)
+
+## Trigger a job manually
+
+Set `TOOLING_API_KEY`, then call the protected endpoint with a configured job
+key. It invokes the exact same runner used by cron.
+
+```bash
+curl -X POST http://localhost:8090/v1/tooling/jobs/monday-digest/run \
+  -H 'x-tooling-api-key: your-tooling-key' \
+  -H 'content-type: application/json' \
+  -d '{}'
+```
+
+To test a specific digest date, provide an ISO timestamp. The timestamp controls
+the calculated digest window and creates a deterministic run ID.
+
+```json
+{ "scheduledAt": "2026-08-10T08:00:00.000Z" }
+```
 
 Keep `DRY_RUN=true` until backend recipient endpoints and credentials are verified.
 
