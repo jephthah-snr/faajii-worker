@@ -21,9 +21,14 @@ export class JobRunner {
 
   async run(
     job: (typeof config.jobs)[number],
-    scheduledInstant = new Date()
+    scheduledInstant = new Date(),
+    options: { force?: boolean } = {}
   ): Promise<{ runId: string; published: number; skipped: boolean }> {
     const runId = createRunId(job.key, scheduledInstant);
+    if (options.force) {
+      await this.redis.releaseSchedulerLock(job.key, runId);
+      logger.warn({ jobKey: job.key, runId }, "Scheduler lock force-released for tooling rerun");
+    }
     if (!(await this.redis.acquireSchedulerLock(job.key, runId, 3600))) {
       logger.info(
         { jobKey: job.key, runId },
@@ -47,6 +52,16 @@ export class JobRunner {
       const data = await this.backend.fetchDigestData(
         job.digestDataPath,
         window
+      );
+      logger.info(
+        {
+          jobKey: job.key,
+          runId,
+          ...window,
+          candidateCount: data.candidates?.length ?? 0,
+          overrideCount: data.overrides?.length ?? 0,
+        },
+        "Digest data fetched from backend"
       );
       const events = curateDigestEvents(data);
       const template = buildDigestTemplate({

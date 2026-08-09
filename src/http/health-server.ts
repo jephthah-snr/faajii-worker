@@ -120,13 +120,14 @@ export function startHealthServer(
         json(response, 400, { message: "scheduledAt must be an ISO date" });
         return;
       }
+      const force = body.force === true;
       const runId = createRunId(job.key, scheduledInstant);
       logger.info(
-        { jobKey, runId, scheduledAt: scheduledInstant.toISOString() },
+        { jobKey, runId, force, scheduledAt: scheduledInstant.toISOString() },
         "Tooling job accepted"
       );
       void runner
-        .run(job, scheduledInstant)
+        .run(job, scheduledInstant, { force })
         .then((result) => {
           logger.info(
             { jobKey, ...result },
@@ -145,6 +146,7 @@ export function startHealthServer(
         message: "Job accepted; running in background. Watch worker logs for progress.",
         jobKey,
         runId,
+        force,
         scheduledAt: scheduledInstant.toISOString(),
       });
     } catch (error) {

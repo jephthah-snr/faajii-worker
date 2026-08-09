@@ -29,6 +29,10 @@ export class RedisStore {
     return (await this.client.set(this.key('schedule-lock', jobKey, runId), runId, 'EX', ttlSeconds, 'NX')) === 'OK';
   }
 
+  async releaseSchedulerLock(jobKey: string, runId: string): Promise<void> {
+    await this.client.del(this.key('schedule-lock', jobKey, runId));
+  }
+
   async claimDelivery(deliveryId: string, owner: string): Promise<boolean> {
     const result = await this.client.eval(
       CLAIM_SCRIPT,
