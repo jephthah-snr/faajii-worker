@@ -75,13 +75,16 @@ export class JobRunner {
     }
     let cursor: string | undefined;
     let published = 0;
+    let pageNumber = 0;
     do {
+      pageNumber += 1;
       const page = await this.backend.fetchRecipients(
         job.recipientPath,
         runId,
         scheduledAt,
         cursor
       );
+      let pagePublished = 0;
       for (const recipient of page.recipients) {
         for (const channel of job.channels) {
           if (channel === "email" && !recipient.email) continue;
@@ -100,13 +103,26 @@ export class JobRunner {
           };
           await this.rabbit.publish(message);
           published += 1;
+          pagePublished += 1;
           await this.redis.recordPublished(runId);
         }
       }
+      logger.info(
+        {
+          jobKey: job.key,
+          runId,
+          pageNumber,
+          pageRecipients: page.recipients.length,
+          pagePublished,
+          published,
+          hasMore: Boolean(page.nextCursor),
+        },
+        "Job recipient page published"
+      );
       cursor = page.nextCursor || undefined;
     } while (cursor);
     logger.info(
-      { jobKey: job.key, runId, published, timezone: config.APP_TIMEZONE },
+      { jobKey: job.key, runId, published, pages: pageNumber, timezone: config.APP_TIMEZONE },
       "Job run published"
     );
     return { runId, published, skipped: false };

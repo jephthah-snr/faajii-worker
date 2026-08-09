@@ -6,10 +6,29 @@ import {
   ServerResponse,
 } from "node:http";
 import { config } from "../config/env.js";
+import { createRunId } from "../core/identity.js";
 import { logger } from "../core/logger.js";
 import { RedisStore } from "../core/redis-store.js";
 import { JobRunner } from "../scheduler/job-runner.js";
 import { RabbitTransport } from "../transport/rabbit.js";
+
+function describeError(error: unknown) {
+  const err = error as {
+    message?: string;
+    code?: string;
+    response?: { status?: number; data?: unknown };
+    config?: { method?: string; baseURL?: string; url?: string };
+  };
+  return {
+    error: err.message || "Unknown error",
+    code: err.code,
+    upstreamStatus: err.response?.status,
+    upstreamUrl: err.config
+      ? `${err.config.baseURL || ""}${err.config.url || ""}`
+      : undefined,
+    upstreamBody: err.response?.data,
+  };
+}
 
 function json(response: ServerResponse, status: number, body: unknown) {
   response.writeHead(status, { "Content-Type": "application/json" });
@@ -101,32 +120,39 @@ export function startHealthServer(
         json(response, 400, { message: "scheduledAt must be an ISO date" });
         return;
       }
-      const result = await runner.run(job, scheduledInstant);
-      json(response, result.skipped ? 409 : 200, {
-        message: result.skipped
-          ? "This job run was already triggered"
-          : "Job completed and deliveries were queued",
+      const runId = createRunId(job.key, scheduledInstant);
+      logger.info(
+        { jobKey, runId, scheduledAt: scheduledInstant.toISOString() },
+        "Tooling job accepted"
+      );
+      void runner
+        .run(job, scheduledInstant)
+        .then((result) => {
+          logger.info(
+            { jobKey, ...result },
+            result.skipped
+              ? "Tooling job skipped; run already owned"
+              : "Tooling job completed"
+          );
+        })
+        .catch((error) => {
+          logger.error(
+            { jobKey, runId, err: error, ...describeError(error) },
+            "Tooling job run failed"
+          );
+        });
+      json(response, 202, {
+        message: "Job accepted; running in background. Watch worker logs for progress.",
         jobKey,
-        ...result,
+        runId,
+        scheduledAt: scheduledInstant.toISOString(),
       });
     } catch (error) {
-      logger.error({ error, jobKey }, "Tooling job run failed");
-      const err = error as {
-        message?: string;
-        code?: string;
-        response?: { status?: number; data?: unknown };
-        config?: { method?: string; baseURL?: string; url?: string };
-      };
+      logger.error({ error, jobKey }, "Tooling job accept failed");
       json(response, 500, {
-        message: "Job run failed",
+        message: "Job accept failed",
         jobKey,
-        error: err.message || "Unknown error",
-        code: err.code,
-        upstreamStatus: err.response?.status,
-        upstreamUrl: err.config
-          ? `${err.config.baseURL || ""}${err.config.url || ""}`
-          : undefined,
-        upstreamBody: err.response?.data,
+        ...describeError(error),
       });
     }
   }).listen(config.PORT);

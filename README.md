@@ -79,7 +79,9 @@ RabbitMQ UI: `http://localhost:15672` (`guest` / `guest` locally)
 ## Trigger a job manually
 
 Set `TOOLING_API_KEY`, then call the protected endpoint with a configured job
-key. It invokes the exact same runner used by cron.
+key. It returns `202 Accepted` immediately and runs the same runner used by cron
+in the background. Watch worker logs for `Tooling job accepted`,
+`Job recipient page published`, and `Tooling job completed`.
 
 ```bash
 curl -X POST http://localhost:8090/v1/tooling/jobs/monday-digest/run \
