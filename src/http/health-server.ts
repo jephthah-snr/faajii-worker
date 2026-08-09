@@ -111,7 +111,23 @@ export function startHealthServer(
       });
     } catch (error) {
       logger.error({ error, jobKey }, "Tooling job run failed");
-      json(response, 500, { message: "Job run failed" });
+      const err = error as {
+        message?: string;
+        code?: string;
+        response?: { status?: number; data?: unknown };
+        config?: { method?: string; baseURL?: string; url?: string };
+      };
+      json(response, 500, {
+        message: "Job run failed",
+        jobKey,
+        error: err.message || "Unknown error",
+        code: err.code,
+        upstreamStatus: err.response?.status,
+        upstreamUrl: err.config
+          ? `${err.config.baseURL || ""}${err.config.url || ""}`
+          : undefined,
+        upstreamBody: err.response?.data,
+      });
     }
   }).listen(config.PORT);
 }
