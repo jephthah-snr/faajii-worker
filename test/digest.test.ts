@@ -3,6 +3,7 @@ import {
   buildDigestTemplate,
   calculateDigestWindow,
   curateDigestEvents,
+  formatEventDateTime,
   truncateDescription,
 } from "../src/digests/digest.js";
 import { DigestCandidate } from "../src/core/types.js";
@@ -84,6 +85,12 @@ describe("digest curation", () => {
       "https://faajii.rsvp/event-2?utm_source=email&amp;utm_campaign=friday-digest%3Atest"
     );
     expect(template.html).toContain("Lorem Ipsum is simply dummy text");
+    expect(template.html).toContain(
+      formatEventDateTime("2026-08-10T12:00:00.000Z", "Africa/Lagos")
+    );
+    expect(template.html).toContain(
+      "font:700 16px/22px Arial,Helvetica,sans-serif;color:#000000;"
+    );
     // CTA is a new row after the bordered card cell closes.
     expect(template.html).toContain(
       'border:1px solid #eeeeee;border-radius:12px;background:#ffffff;'
@@ -104,12 +111,16 @@ describe("digest curation", () => {
       )
     ).toMatch(/…$/);
     expect(truncateDescription("   ")).toBe("");
+    expect(formatEventDateTime("2026-08-10T12:00:00.000Z", "Africa/Lagos")).toBe(
+      "Mon, Aug 10 · 1:00 PM"
+    );
 
     const template = buildDigestTemplate({
       type: "monday",
       runId: "monday-digest:test",
       publicUrl: "https://faajii.app",
       rsvpPublicUrl: "https://faajii.rsvp/",
+      timezone: "Africa/Lagos",
       events: Array.from({ length: 6 }, (_, index) =>
         event(index + 1, {
           identifier: index === 0 ? "/byob/" : `event-${index + 1}`,
@@ -121,8 +132,8 @@ describe("digest curation", () => {
     expect(template.html).toContain(
       "https://faajii.rsvp/byob?utm_source=email&amp;utm_campaign=monday-digest%3Atest"
     );
-    // First card has no description → no blurb row with empty padding cell after title alone is ok;
-    // ensure we do not render location as a substitute.
+    // First card has no description → date/time still shows; never location.
     expect(template.html).not.toContain(">Lagos</td>");
+    expect(template.html).toContain("Mon, Aug 10 · 1:00 PM");
   });
 });

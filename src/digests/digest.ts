@@ -63,12 +63,23 @@ export function truncateDescription(
   return `${cut}…`;
 }
 
+/** Compact event date/time for card meta — never location. */
+export function formatEventDateTime(
+  startDate: string,
+  zone = "Africa/Lagos"
+): string {
+  const dt = DateTime.fromISO(startDate, { zone: "utc" }).setZone(zone);
+  if (!dt.isValid) return "";
+  return dt.toFormat("ccc, LLL d · h:mm a");
+}
+
 export function buildDigestTemplate(input: {
   type: DigestType;
   runId: string;
   publicUrl: string;
   /** RSVP web origin for event CTAs, e.g. https://faajii.rsvp */
   rsvpPublicUrl?: string;
+  timezone?: string;
   appStoreUrl?: string;
   playStoreUrl?: string;
   facebookUrl?: string;
@@ -90,6 +101,7 @@ export function buildDigestTemplate(input: {
       : "It’s the weekend. Here’s what we prepared for you.");
   const publicUrl = input.publicUrl.replace(/\/$/, "");
   const rsvpPublicUrl = (input.rsvpPublicUrl || publicUrl).replace(/\/$/, "");
+  const timezone = input.timezone || "Africa/Lagos";
   const exploreUrl = `${publicUrl}?utm_source=email&utm_campaign=${encodeURIComponent(
     input.runId
   )}&utm_content=explore_more`;
@@ -98,27 +110,34 @@ export function buildDigestTemplate(input: {
       .trim()
       .replace(/^\/+|\/+$/g, "");
     const pathSlug = encodeURIComponent(slug);
-    // Description only — never fall back to location.
+    // Description + date/time only — never location.
     const blurb = truncateDescription(event.description);
+    const when = formatEventDateTime(event.startDate, timezone);
     return {
       ...event,
       blurb,
+      when,
       ctaUrl: `${rsvpPublicUrl}/${pathSlug}?utm_source=email&utm_campaign=${encodeURIComponent(
         input.runId
       )}`,
     };
   });
 
-  // Fixed 264px card. Bordered block = image/title/description only.
+  // Fixed 264px card. Bordered block = image / title / description / date.
   // CTA is a separate table row below that border (not inside it).
   const cards = enriched
     .map((event) => {
       const ctaLabel = event.hasTickets ? "Get Ticket" : "RSVP Now";
       const descriptionRow = event.blurb
-        ? `<tr><td style="padding:0 12px 14px;font:12px/17px Arial,sans-serif;color:#555555;">${esc(
+        ? `<tr><td style="padding:0 14px 8px;font:13px/18px Arial,sans-serif;color:#6b7280;">${esc(
             event.blurb
           )}</td></tr>`
         : "";
+      const whenRow = event.when
+        ? `<tr><td style="padding:0 14px 14px;font:12px/16px Arial,sans-serif;color:#9ca3af;">${esc(
+            event.when
+          )}</td></tr>`
+        : `<tr><td style="padding:0 0 14px;"></td></tr>`;
       return [
         `<td class="event-cell" width="50%" valign="top" style="width:50%;padding:10px 8px 22px;">`,
         `<table role="presentation" width="264" cellpadding="0" cellspacing="0" border="0" style="width:264px;max-width:264px;margin:0 auto;">`,
@@ -128,10 +147,11 @@ export function buildDigestTemplate(input: {
         `<tr><td><img src="${esc(event.imageUrl)}" alt="${esc(
           event.name
         )}" width="264" height="220" style="display:block;width:264px;max-width:264px;height:220px;object-fit:cover;border:0;border-radius:12px 12px 0 0;" /></td></tr>`,
-        `<tr><td style="padding:12px 12px 6px;font:700 15px/20px Arial,sans-serif;color:#111111;">${esc(
+        `<tr><td style="padding:14px 14px 6px;font:700 16px/22px Arial,Helvetica,sans-serif;color:#000000;">${esc(
           event.name
         )}</td></tr>`,
         descriptionRow,
+        whenRow,
         `</table>`,
         `</td></tr>`,
         // --- CTA outside the bordered card ---

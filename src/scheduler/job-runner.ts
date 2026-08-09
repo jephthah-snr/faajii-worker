@@ -43,6 +43,10 @@ export class JobRunner {
     const scheduledAt = DateTime.fromJSDate(scheduledInstant, { zone: "utc" })
       .setZone(config.APP_TIMEZONE)
       .toISO()!;
+    /** Fresh digest HTML for this run — do not rely on a possibly-stale backend snapshot. */
+    let digestTemplate:
+      | { subject?: string; html?: string; text: string }
+      | undefined;
     if (job.digestType) {
       if (!job.digestDataPath || !job.digestSnapshotPath)
         throw new Error(
@@ -68,11 +72,12 @@ export class JobRunner {
         "Digest data fetched from backend"
       );
       const events = curateDigestEvents(data);
-      const template = buildDigestTemplate({
+      digestTemplate = buildDigestTemplate({
         type: job.digestType,
         runId,
         publicUrl: config.APP_PUBLIC_URL,
         rsvpPublicUrl: config.RSVP_PUBLIC_URL,
+        timezone: config.APP_TIMEZONE,
         appStoreUrl: config.APP_STORE_URL,
         playStoreUrl: config.PLAY_STORE_URL,
         facebookUrl: config.FACEBOOK_URL,
@@ -86,10 +91,17 @@ export class JobRunner {
         runId,
         ...window,
         events,
-        template,
+        template: digestTemplate,
       });
       logger.info(
-        { jobKey: job.key, runId, events: events.length, ...window },
+        {
+          jobKey: job.key,
+          runId,
+          events: events.length,
+          ...window,
+          hasSeeMore: Boolean(digestTemplate.html?.includes("See More")),
+          hasExploreMore: Boolean(digestTemplate.html?.includes("Explore more")),
+        },
         "Digest curated from current backend data and snapshotted"
       );
     }
@@ -118,7 +130,8 @@ export class JobRunner {
             jobKey: job.key,
             channel,
             recipient,
-            template: page.template,
+            // Prefer freshly built digest HTML over snapshot (avoids stale "See More" templates).
+            template: digestTemplate ?? page.template,
             scheduledAt,
             attempt: 0,
             createdAt: new Date().toISOString(),
