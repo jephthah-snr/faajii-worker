@@ -3,10 +3,14 @@ import {
   buildDigestTemplate,
   calculateDigestWindow,
   curateDigestEvents,
+  truncateDescription,
 } from "../src/digests/digest.js";
 import { DigestCandidate } from "../src/core/types.js";
 
-const event = (id: number): DigestCandidate => ({
+const event = (
+  id: number,
+  overrides: Partial<DigestCandidate> = {}
+): DigestCandidate => ({
   id,
   eventId: `public-${id}`,
   identifier: `event-${id}`,
@@ -18,6 +22,7 @@ const event = (id: number): DigestCandidate => ({
   location: "Lagos",
   rsvpCount: 100 - id,
   hasTickets: id % 2 === 0,
+  ...overrides,
 });
 
 describe("digest curation", () => {
@@ -61,7 +66,12 @@ describe("digest curation", () => {
       events: Array.from({ length: 6 }, (_, index) => event(index + 1)),
     });
     expect(template.html).not.toContain(">See More</a>");
+    expect(template.html).not.toContain("showTickets=");
+    expect(template.html).not.toContain("rsvp=true");
     expect(template.html).toContain("max-width:264px");
+    expect(template.html).toContain("border-radius:999px");
+    expect(template.html).toContain(">Get Ticket</a>");
+    expect(template.html).toContain(">RSVP Now</a>");
     expect(template.html).toContain("Explore more");
     expect(template.html).toContain(
       "https://faajii.app?utm_source=email&amp;utm_campaign=friday-digest%3Atest&amp;utm_content=explore_more"
@@ -78,6 +88,36 @@ describe("digest curation", () => {
       '</table></td></tr><tr><td align="center" style="padding:12px 0 0;"><a href='
     );
     // Location must not be used as the card blurb when description exists.
+    expect(template.html).not.toContain(">Lagos</td>");
+  });
+
+  it("truncates descriptions on a word boundary and omits empty blurbs", () => {
+    expect(truncateDescription("Short copy")).toBe("Short copy");
+    expect(
+      truncateDescription(
+        "Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum has been the industry's standard dummy text."
+      )
+    ).toMatch(/…$/);
+    expect(truncateDescription("   ")).toBe("");
+
+    const template = buildDigestTemplate({
+      type: "monday",
+      runId: "monday-digest:test",
+      publicUrl: "https://faajii.app",
+      rsvpPublicUrl: "https://faajii.rsvp/",
+      events: Array.from({ length: 6 }, (_, index) =>
+        event(index + 1, {
+          identifier: index === 0 ? "/byob/" : `event-${index + 1}`,
+          description: index === 0 ? null : event(index + 1).description,
+          hasTickets: index === 0,
+        })
+      ),
+    });
+    expect(template.html).toContain(
+      "https://faajii.rsvp/byob?utm_source=email&amp;utm_campaign=monday-digest%3Atest"
+    );
+    // First card has no description → no blurb row with empty padding cell after title alone is ok;
+    // ensure we do not render location as a substitute.
     expect(template.html).not.toContain(">Lagos</td>");
   });
 });
