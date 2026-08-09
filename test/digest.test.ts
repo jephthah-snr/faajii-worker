@@ -68,7 +68,8 @@ describe("digest curation", () => {
     expect(template.html).not.toContain(">See More</a>");
     expect(template.html).not.toContain("showTickets=");
     expect(template.html).not.toContain("rsvp=true");
-    expect(template.html).toContain("max-width:264px");
+    expect(template.html).toContain('width="264"');
+    expect(template.html).toContain("width:264px");
     expect(template.html).toContain("border-radius:999px");
     expect(template.html).toContain(">Get Ticket</a>");
     expect(template.html).toContain(">RSVP Now</a>");
@@ -83,12 +84,16 @@ describe("digest curation", () => {
       "https://faajii.rsvp/event-2?utm_source=email&amp;utm_campaign=friday-digest%3Atest"
     );
     expect(template.html).toContain("Lorem Ipsum is simply dummy text");
-    // CTA sits in a row after the bordered card closes.
+    // CTA is a new row after the bordered card cell closes.
     expect(template.html).toContain(
-      '</table></td></tr><tr><td align="center" style="padding:12px 0 0;"><a href='
+      'border:1px solid #eeeeee;border-radius:12px;background:#ffffff;'
     );
-    // Location must not be used as the card blurb when description exists.
+    expect(template.html).toContain(
+      '</td></tr><tr><td align="center" style="padding:14px 0 0;border:0;"><a href='
+    );
+    // Location must never appear as the card blurb.
     expect(template.html).not.toContain(">Lagos</td>");
+    expect(template.html).not.toContain("Lagos</td>");
   });
 
   it("truncates descriptions on a word boundary and omits empty blurbs", () => {

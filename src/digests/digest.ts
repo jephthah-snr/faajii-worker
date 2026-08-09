@@ -98,34 +98,51 @@ export function buildDigestTemplate(input: {
       .trim()
       .replace(/^\/+|\/+$/g, "");
     const pathSlug = encodeURIComponent(slug);
+    // Description only — never fall back to location.
+    const blurb = truncateDescription(event.description);
     return {
       ...event,
-      blurb: truncateDescription(event.description),
-      // e.g. https://faajii.rsvp/byob
+      blurb,
       ctaUrl: `${rsvpPublicUrl}/${pathSlug}?utm_source=email&utm_campaign=${encodeURIComponent(
         input.runId
       )}`,
     };
   });
 
-  // Card image/content width 264px (+4px vs previous 260). CTA sits outside the bordered card.
+  // Fixed 264px card. Bordered block = image/title/description only.
+  // CTA is a separate table row below that border (not inside it).
   const cards = enriched
     .map((event) => {
       const ctaLabel = event.hasTickets ? "Get Ticket" : "RSVP Now";
-      const blurb = event.blurb
+      const descriptionRow = event.blurb
         ? `<tr><td style="padding:0 12px 14px;font:12px/17px Arial,sans-serif;color:#555555;">${esc(
             event.blurb
           )}</td></tr>`
         : "";
-      return `<td class="event-cell" width="50%" valign="top" style="width:50%;padding:10px 8px 18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;max-width:264px;margin:0 auto;"><tr><td style="border:1px solid #eeeeee;border-radius:12px;overflow:hidden;background:#ffffff;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td><img src="${esc(
-        event.imageUrl
-      )}" alt="${esc(
-        event.name
-      )}" width="264" style="display:block;width:100%;max-width:264px;height:220px;object-fit:cover;border:0;" /></td></tr><tr><td style="padding:12px 12px 6px;font:700 15px/20px Arial,sans-serif;color:#111111;">${esc(
-        event.name
-      )}</td></tr>${blurb}</table></td></tr><tr><td align="center" style="padding:12px 0 0;"><a href="${esc(
-        event.ctaUrl
-      )}" style="display:inline-block;min-width:132px;padding:10px 22px;background:#000000;color:#ffffff;text-decoration:none;border-radius:999px;font:700 13px/16px Arial,sans-serif;text-align:center;">${ctaLabel}</a></td></tr></table></td>`;
+      return [
+        `<td class="event-cell" width="50%" valign="top" style="width:50%;padding:10px 8px 22px;">`,
+        `<table role="presentation" width="264" cellpadding="0" cellspacing="0" border="0" style="width:264px;max-width:264px;margin:0 auto;">`,
+        // --- bordered card (no button inside) ---
+        `<tr><td style="border:1px solid #eeeeee;border-radius:12px;background:#ffffff;">`,
+        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">`,
+        `<tr><td><img src="${esc(event.imageUrl)}" alt="${esc(
+          event.name
+        )}" width="264" height="220" style="display:block;width:264px;max-width:264px;height:220px;object-fit:cover;border:0;border-radius:12px 12px 0 0;" /></td></tr>`,
+        `<tr><td style="padding:12px 12px 6px;font:700 15px/20px Arial,sans-serif;color:#111111;">${esc(
+          event.name
+        )}</td></tr>`,
+        descriptionRow,
+        `</table>`,
+        `</td></tr>`,
+        // --- CTA outside the bordered card ---
+        `<tr><td align="center" style="padding:14px 0 0;border:0;">`,
+        `<a href="${esc(
+          event.ctaUrl
+        )}" style="display:inline-block;min-width:140px;padding:11px 24px;background:#000000;color:#ffffff;text-decoration:none;border-radius:999px;font:700 13px/16px Arial,sans-serif;text-align:center;">${ctaLabel}</a>`,
+        `</td></tr>`,
+        `</table>`,
+        `</td>`,
+      ].join("");
     })
     .reduce<string[]>((rows, card, index) => {
       if (index % 2 === 0) rows.push(`<tr>${card}`);
