@@ -11,6 +11,11 @@ import { logger } from "../core/logger.js";
 import { RedisStore } from "../core/redis-store.js";
 import { JobRunner } from "../scheduler/job-runner.js";
 import { RabbitTransport } from "../transport/rabbit.js";
+import {
+  getPosterTemplate,
+  listPosterTemplates,
+} from "../posters/poster-catalog.js";
+import { PosterEventData, renderPoster } from "../posters/poster-renderer.js";
 
 function describeError(error: unknown) {
   const err = error as {
@@ -43,8 +48,17 @@ function authorized(request: IncomingMessage): boolean {
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
+function backendAuthorized(request: IncomingMessage): boolean {
+  const supplied = request.headers["x-worker-api-key"];
+  if (!config.BACKEND_WORKER_API_KEY || typeof supplied !== "string")
+    return false;
+  const actual = Buffer.from(supplied);
+  const expected = Buffer.from(config.BACKEND_WORKER_API_KEY);
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
 async function readJson(
-  request: IncomingMessage
+  request: IncomingMessage,
 ): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
   let size = 0;
@@ -61,7 +75,7 @@ async function readJson(
 export function startHealthServer(
   redis: RedisStore,
   rabbit: RabbitTransport,
-  runner: JobRunner
+  runner: JobRunner,
 ): Server {
   return createServer(async (request, response) => {
     const url = new URL(request.url || "/", "http://worker.local");
@@ -79,6 +93,71 @@ export function startHealthServer(
         timezone: config.APP_TIMEZONE,
         now: new Date().toISOString(),
       });
+      return;
+    }
+
+    if (url.pathname === "/v1/poster-templates" && request.method === "GET") {
+      const templates = listPosterTemplates(
+        url.searchParams.get("category") || undefined,
+      );
+      json(response, 200, {
+        templates: templates.map((template) => ({
+          id: template.id,
+          name: template.name,
+          category: template.category,
+          backgroundUrl: template.backgroundUrl,
+          sortOrder: template.sortOrder,
+          canvas: template.canvas,
+          fields: template.fields,
+        })),
+      });
+      return;
+    }
+
+    if (
+      url.pathname === "/v1/tooling/posters/render" ||
+      url.pathname === "/v1/internal/posters/render"
+    ) {
+      if (request.method !== "POST") {
+        response.setHeader("Allow", "POST");
+        json(response, 405, { message: "Method not allowed" });
+        return;
+      }
+      const isInternal = url.pathname === "/v1/internal/posters/render";
+      if (!(isInternal ? backendAuthorized(request) : authorized(request))) {
+        json(response, 401, { message: "Invalid service API key" });
+        return;
+      }
+      try {
+        const body = await readJson(request);
+        const template = getPosterTemplate(String(body.templateId || ""));
+        if (!template) {
+          json(response, 404, { message: "Poster template not found" });
+          return;
+        }
+        const event = body.event as PosterEventData | undefined;
+        if (!event?.eventName?.trim()) {
+          json(response, 400, { message: "event.eventName is required" });
+          return;
+        }
+        const preview = body.preview !== false;
+        const image = await renderPoster(template, event, preview);
+        const contentType =
+          template.canvas.format === "jpeg" ? "image/jpeg" : "image/png";
+        response.writeHead(200, {
+          "Content-Type": contentType,
+          "Content-Length": String(image.length),
+          "Cache-Control": "no-store",
+          "Content-Disposition": `inline; filename="${template.id}.${template.canvas.format}"`,
+        });
+        response.end(image);
+      } catch (error) {
+        logger.error({ error }, "Poster render failed");
+        json(response, 500, {
+          message: "Poster render failed",
+          ...describeError(error),
+        });
+      }
       return;
     }
 
@@ -124,7 +203,7 @@ export function startHealthServer(
       const runId = createRunId(job.key, scheduledInstant);
       logger.info(
         { jobKey, runId, force, scheduledAt: scheduledInstant.toISOString() },
-        "Tooling job accepted"
+        "Tooling job accepted",
       );
       void runner
         .run(job, scheduledInstant, { force })
@@ -133,17 +212,18 @@ export function startHealthServer(
             { jobKey, ...result },
             result.skipped
               ? "Tooling job skipped; run already owned"
-              : "Tooling job completed"
+              : "Tooling job completed",
           );
         })
         .catch((error) => {
           logger.error(
             { jobKey, runId, err: error, ...describeError(error) },
-            "Tooling job run failed"
+            "Tooling job run failed",
           );
         });
       json(response, 202, {
-        message: "Job accepted; running in background. Watch worker logs for progress.",
+        message:
+          "Job accepted; running in background. Watch worker logs for progress.",
         jobKey,
         runId,
         force,
