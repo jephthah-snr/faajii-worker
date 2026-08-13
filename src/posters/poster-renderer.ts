@@ -12,6 +12,7 @@ export interface PosterEventData {
   subtitle?: string;
   description?: string;
   startDate?: string;
+  endDate?: string;
   location?: string;
   eventLocationShort?: string;
   rsvpUrl?: string;
@@ -31,6 +32,10 @@ const fontFiles: Record<string, string> = {
   "Anton-Regular.ttf": join(__dirname, "fonts", "Anton-Regular.ttf"),
   "GreatVibes-Regular.ttf": join(__dirname, "fonts", "GreatVibes-Regular.ttf"),
   "DancingScript-Bold.ttf": join(__dirname, "fonts", "DancingScript-Bold.ttf"),
+  "BebasNeue-Regular.ttf": join(__dirname, "fonts", "BebasNeue-Regular.ttf"),
+  "BodoniModa-Variable.ttf": join(__dirname, "fonts", "BodoniModa-Variable.ttf"),
+  "Caveat-Variable.ttf": join(__dirname, "fonts", "Caveat-Variable.ttf"),
+  "Allura-Regular.ttf": join(__dirname, "fonts", "Allura-Regular.ttf"),
 };
 
 const vectorFontCache = new Map<string, Promise<opentype.Font>>();
@@ -69,11 +74,23 @@ function valueFor(
   if (!value && field.fallbackSource)
     value = String(event[field.fallbackSource as keyof PosterEventData] || "");
   if ((source === "date" || source === "time") && event.startDate) {
-    const date = DateTime.fromISO(event.startDate).setZone("Africa/Lagos");
-    if (date.isValid) {
+    const start = DateTime.fromISO(event.startDate).setZone("Africa/Lagos");
+    const end = event.endDate
+      ? DateTime.fromISO(event.endDate).setZone("Africa/Lagos")
+      : null;
+    if (start.isValid) {
       const format =
         field.format || (source === "date" ? "dd LLL yyyy" : "h:mm a");
-      value = date.toFormat(format.replace(/MMM/g, "LLL"));
+      const normalizedFormat = format.replace(/MMM/g, "LLL");
+      if (
+        source === "date" &&
+        end?.isValid &&
+        end.toISODate() !== start.toISODate()
+      ) {
+        value = `${start.toFormat(normalizedFormat)} – ${end.toFormat(normalizedFormat)}`;
+      } else {
+        value = start.toFormat(source === "time" ? "h:mm a" : normalizedFormat);
+      }
     }
   }
   if (field.textTransform === "uppercase") value = value.toUpperCase();
@@ -173,9 +190,10 @@ async function overlaySvg(template: PosterTemplate, event: PosterEventData) {
       );
     const font = await vectorFont(field.fontFile);
     if (font) {
+      const vectorLetterSpacing = (field.letterSpacing || 0) / size;
       lines.forEach((line, index) => {
         const lineWidth = font.getAdvanceWidth(line, size, {
-          letterSpacing: field.letterSpacing || 0,
+          letterSpacing: vectorLetterSpacing,
         });
         const pathX =
           field.alignment === "center"
@@ -188,10 +206,14 @@ async function overlaySvg(template: PosterTemplate, event: PosterEventData) {
           pathX,
           y + offset + size + index * lineHeight,
           size,
-          { letterSpacing: field.letterSpacing || 0 },
+          { letterSpacing: vectorLetterSpacing },
+        );
+        const syntheticWeight = Math.max(
+          0,
+          ((field.fontWeight || 400) - 400) / 180,
         );
         nodes.push(
-          `<path d="${path.toPathData(2)}" fill="${field.color || "#FFFFFF"}" ${filter}/>`
+          `<path d="${path.toPathData(2)}" fill="${field.color || "#FFFFFF"}"${syntheticWeight > 0 ? ` stroke="${field.color || "#FFFFFF"}" stroke-width="${syntheticWeight}" stroke-linejoin="round" paint-order="stroke fill"` : ""} ${filter}/>`
         );
       });
     } else {

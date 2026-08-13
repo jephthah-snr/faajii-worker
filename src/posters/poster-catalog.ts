@@ -37,6 +37,7 @@ export type PosterTemplate = {
   id: string;
   name: string;
   category: string;
+  type: "category" | "default";
   backgroundUrl: string;
   enabled: boolean;
   sortOrder: number;
@@ -58,14 +59,23 @@ export type PosterTemplate = {
 const catalog = templates as unknown as PosterTemplate[];
 
 export function listPosterTemplates(category?: string): PosterTemplate[] {
-  return catalog
-    .filter(
-      (template) =>
-        template.enabled &&
-        (!category ||
-          template.category.toLowerCase() === category.toLowerCase()),
-    )
-    .sort((a, b) => a.sortOrder - b.sortOrder);
+  const enabled = catalog.filter((template) => template.enabled);
+  if (!category) return enabled.sort((a, b) => a.sortOrder - b.sortOrder);
+
+  const normalizedCategory = category.trim().toLowerCase();
+  const defaults = enabled.filter((template) => template.type === "default");
+  if (normalizedCategory === "default") {
+    return defaults.sort((a, b) => a.sortOrder - b.sortOrder);
+  }
+  const exactMatches = enabled.filter(
+    (template) => template.category.toLowerCase() === normalizedCategory,
+  );
+  const selected = [...exactMatches, ...defaults].filter(
+    (template, index, templates) =>
+      templates.findIndex((candidate) => candidate.id === template.id) === index,
+  );
+
+  return selected.sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
 export function getPosterTemplate(id: string): PosterTemplate | undefined {
