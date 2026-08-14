@@ -36,6 +36,7 @@ const fontFiles: Record<string, string> = {
   "BodoniModa-Variable.ttf": join(__dirname, "fonts", "BodoniModa-Variable.ttf"),
   "Caveat-Variable.ttf": join(__dirname, "fonts", "Caveat-Variable.ttf"),
   "Allura-Regular.ttf": join(__dirname, "fonts", "Allura-Regular.ttf"),
+  "Nostalgic-Retro.otf": join(__dirname, "fonts", "Nostalgic-Retro.otf"),
 };
 
 const vectorFontCache = new Map<string, Promise<opentype.Font>>();
@@ -144,8 +145,17 @@ async function fontCss(template: PosterTemplate): Promise<string> {
       const family =
         Object.values(template.fields).find((field) => field.fontFile === file)
           ?.fontFamily || "Arial";
-      const format = file.toLowerCase().endsWith(".ttf") ? "truetype" : "woff";
-      const mime = format === "truetype" ? "font/ttf" : "font/woff";
+      const format = file.toLowerCase().endsWith(".otf")
+        ? "opentype"
+        : file.toLowerCase().endsWith(".ttf")
+          ? "truetype"
+          : "woff";
+      const mime =
+        format === "opentype"
+          ? "font/otf"
+          : format === "truetype"
+            ? "font/ttf"
+            : "font/woff";
       return `@font-face{font-family:'${family}';src:url(data:${mime};base64,${bytes.toString("base64")}) format('${format}');}`;
     }),
   );
