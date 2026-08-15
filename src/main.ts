@@ -30,7 +30,14 @@ async function main() {
   const scheduler = new Scheduler(runner);
   scheduler.start();
   const eventReminders = new EventReminderScheduler(runner, backend);
-  await eventReminders.start();
+  try {
+    await eventReminders.start();
+  } catch (error) {
+    logger.error(
+      { error },
+      "Event reminder scheduler failed to start; continuing without reminders"
+    );
+  }
   const healthServer = startHealthServer(redis, rabbit, runner);
   logger.info(
     {
