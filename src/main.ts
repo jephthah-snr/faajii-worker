@@ -9,6 +9,8 @@ import { JobRunner } from "./scheduler/job-runner.js";
 import { Scheduler } from "./scheduler/scheduler.js";
 import { RabbitTransport } from "./transport/rabbit.js";
 import { DeliveryWorker } from "./workers/delivery.worker.js";
+import { PushProvider } from "./providers/push.provider.js";
+import { EventReminderScheduler } from "./scheduler/event-reminder.scheduler.js";
 
 async function main() {
   const redis = new RedisStore();
@@ -20,12 +22,15 @@ async function main() {
     rabbit,
     backend,
     new EmailProvider(),
-    new SmsProvider()
+    new SmsProvider(),
+    new PushProvider(backend)
   );
   await worker.start();
   const runner = new JobRunner(redis, rabbit, backend);
   const scheduler = new Scheduler(runner);
   scheduler.start();
+  const eventReminders = new EventReminderScheduler(runner, backend);
+  await eventReminders.start();
   const healthServer = startHealthServer(redis, rabbit, runner);
   logger.info(
     {
@@ -43,6 +48,7 @@ async function main() {
     shuttingDown = true;
     logger.info({ signal }, "Graceful shutdown started");
     scheduler.stop();
+    eventReminders.stop();
     await new Promise<void>((resolve) => healthServer.close(() => resolve()));
     await rabbit.close();
     await redis.close();

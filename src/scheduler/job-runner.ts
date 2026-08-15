@@ -162,4 +162,37 @@ export class JobRunner {
     );
     return { runId, published, skipped: false };
   }
+
+  async runEventReminder(eventId: string, reminderInstant: Date): Promise<{ runId: string; published: number; skipped: boolean }> {
+    const jobKey = `event-reminder-${eventId}`;
+    const runId = createRunId(jobKey, reminderInstant);
+    if (!(await this.redis.acquireSchedulerLock(jobKey, runId, 86400))) {
+      return { runId, published: 0, skipped: true };
+    }
+    const scheduledAt = reminderInstant.toISOString();
+    let cursor: string | undefined;
+    let published = 0;
+    do {
+      const page = await this.backend.fetchReminderRecipients(eventId, runId, scheduledAt, cursor);
+      for (const recipient of page.recipients) {
+        const channels = Array.isArray(recipient.templateData.channels)
+          ? recipient.templateData.channels.filter((channel): channel is 'email' | 'push' => channel === 'email' || channel === 'push')
+          : [];
+        for (const channel of channels) {
+          if (channel === 'email' && !recipient.email) continue;
+          if (channel === 'push' && !recipient.userId) continue;
+          const deliveryId = createDeliveryId(runId, recipient.id, channel);
+          await this.rabbit.publish({
+            schemaVersion: 1, deliveryId, runId, jobKey, channel, recipient,
+            template: page.template, scheduledAt, attempt: 0, createdAt: new Date().toISOString(),
+          });
+          published += 1;
+          await this.redis.recordPublished(runId);
+        }
+      }
+      cursor = page.nextCursor || undefined;
+    } while (cursor);
+    logger.info({ eventId, runId, published }, 'Event reminder recipients queued');
+    return { runId, published, skipped: false };
+  }
 }

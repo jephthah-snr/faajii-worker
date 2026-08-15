@@ -5,7 +5,7 @@ import { normalizeEnv } from "./normalize-env.js";
 const jobSchema = z.object({
   key: z.string().min(1),
   cron: z.string().min(1),
-  channels: z.array(z.enum(["email", "sms"])).min(1),
+  channels: z.array(z.enum(["email", "sms", "push"])).min(1),
   recipientPath: z.string().startsWith("/"),
   digestType: z.enum(["monday", "friday"]).optional(),
   digestDataPath: z.string().startsWith("/").optional(),
@@ -57,6 +57,10 @@ const schema = z.object({
     .string()
     .default("false")
     .transform((value) => value === "true"),
+  EVENT_REMINDERS_ENABLED: z.string().default("true").transform((value) => value === "true"),
+  EVENT_REMINDER_EVENTS_PATH: z.string().startsWith("/").default("/v1/internal/worker/jobs/event-reminders/events"),
+  EVENT_REMINDER_RECIPIENTS_PATH: z.string().startsWith("/").default("/v1/internal/worker/jobs/event-reminders"),
+  EVENT_REMINDER_PUSH_PATH: z.string().startsWith("/").default("/v1/internal/worker/event-reminders/push"),
 });
 
 const raw = schema.parse(normalizeEnv(process.env));

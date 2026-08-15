@@ -1,6 +1,6 @@
 import axios from "axios";
 import { config } from "../config/env.js";
-import { DigestRunData, RecipientPage } from "./types.js";
+import { DigestRunData, RecipientPage, ReminderEvent } from "./types.js";
 
 export class BackendClient {
   private readonly client = axios.create({
@@ -43,5 +43,22 @@ export class BackendClient {
 
   async reportDelivery(payload: Record<string, unknown>): Promise<void> {
     await this.client.post("/internal/worker/deliveries", payload);
+  }
+
+  async fetchReminderEvents(query: { targetDate: string; windowStart: string; windowEnd: string }): Promise<ReminderEvent[]> {
+    const response = await this.client.get(config.EVENT_REMINDER_EVENTS_PATH, { params: query });
+    const body = response.data?.data ?? response.data;
+    return Array.isArray(body.events) ? body.events : [];
+  }
+
+  async fetchReminderRecipients(eventId: string, runId: string, scheduledAt: string, cursor?: string): Promise<RecipientPage> {
+    return this.fetchRecipients(`${config.EVENT_REMINDER_RECIPIENTS_PATH}/${encodeURIComponent(eventId)}/recipients`, runId, scheduledAt, cursor);
+  }
+
+  async sendReminderPush(payload: Record<string, unknown>): Promise<string> {
+    const response = await this.client.post(config.EVENT_REMINDER_PUSH_PATH, payload);
+    const body = response.data?.data ?? response.data;
+    if (!body?.success) throw new Error(body?.error || "Push notification was not accepted");
+    return String(body.messageId || body.providerId || "firebase");
   }
 }

@@ -7,10 +7,11 @@ import { RedisStore } from '../core/redis-store.js';
 import { NotificationMessage } from '../core/types.js';
 import { EmailProvider } from '../providers/email.provider.js';
 import { SmsProvider } from '../providers/sms.provider.js';
+import { PushProvider } from '../providers/push.provider.js';
 import { RabbitTransport } from '../transport/rabbit.js';
 
 export class DeliveryWorker {
-  constructor(private readonly redis: RedisStore, private readonly rabbit: RabbitTransport, private readonly backend: BackendClient, private readonly email: EmailProvider, private readonly sms: SmsProvider) {}
+  constructor(private readonly redis: RedisStore, private readonly rabbit: RabbitTransport, private readonly backend: BackendClient, private readonly email: EmailProvider, private readonly sms: SmsProvider, private readonly push: PushProvider) {}
   async start(): Promise<void> { await this.rabbit.consume((message, raw) => this.handle(message, raw)); }
 
   private async handle(message: NotificationMessage, raw: ConsumeMessage): Promise<void> {
@@ -21,7 +22,11 @@ export class DeliveryWorker {
       return;
     }
     try {
-      const providerId = message.channel === 'email' ? await this.email.send(message) : await this.sms.send(message);
+      const providerId = message.channel === 'email'
+        ? await this.email.send(message)
+        : message.channel === 'sms'
+          ? await this.sms.send(message)
+          : await this.push.send(message);
       if (!(await this.redis.completeDelivery(message.deliveryId, message.runId, owner))) throw new Error('Delivery ownership expired before completion');
       await this.backend.reportDelivery({ deliveryId: message.deliveryId, runId: message.runId, jobKey: message.jobKey, channel: message.channel, recipientId: message.recipient.id, status: 'sent', providerId, sentAt: new Date().toISOString() }).catch(error => logger.warn({ error, deliveryId: message.deliveryId }, 'Backend delivery audit callback failed'));
       this.rabbit.ack(raw);

@@ -1,12 +1,19 @@
-export type Channel = "email" | "sms";
+export type Channel = "email" | "sms" | "push";
 
 export interface Recipient {
   id: string;
   email?: string;
   phone?: string;
+  userId?: string;
   locale?: string;
   timezone?: string;
   templateData: Record<string, unknown>;
+}
+
+export interface ReminderEvent {
+  id: string;
+  name: string;
+  startDate: string;
 }
 
 export interface NotificationMessage {
