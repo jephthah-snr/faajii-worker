@@ -33,9 +33,9 @@ export function curateDigestEvents(data: DigestRunData): DigestCandidate[] {
   for (let index = 0; index < slots.length; index += 1)
     if (!slots[index]) slots[index] = automatic.shift();
   const result = slots.filter(Boolean) as DigestCandidate[];
-  if (result.length < 6)
+  if (result.length === 0)
     throw new Error(
-      `Digest requires at least six eligible events; got ${result.length} after curation from ${data.candidates.length} candidates and ${data.overrides.length} overrides`
+      `Digest requires at least one eligible event; got none after curation from ${data.candidates.length} candidates and ${data.overrides.length} overrides`
     );
   return result;
 }

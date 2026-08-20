@@ -45,6 +45,21 @@ describe("digest curation", () => {
     expect(result.map((item) => item.id)).toEqual([8, 1, 2, 3, 4, 5, 6, 7]);
   });
 
+  it("curates a digest when only one eligible event is available", () => {
+    const result = curateDigestEvents({
+      overrides: [],
+      candidates: [event(1)],
+    });
+
+    expect(result.map((item) => item.id)).toEqual([1]);
+  });
+
+  it("does not create an empty digest", () => {
+    expect(() =>
+      curateDigestEvents({ overrides: [], candidates: [] })
+    ).toThrow("Digest requires at least one eligible event");
+  });
+
   it("wraps the digest body in the shared Faajii header and footer", () => {
     const template = buildDigestTemplate({
       type: "friday",
