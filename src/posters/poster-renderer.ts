@@ -27,6 +27,10 @@ const fontFiles: Record<string, string> = {
     require.resolve("@fontsource/montserrat/files/montserrat-latin-600-normal.woff"),
   "Montserrat-Bold.ttf":
     require.resolve("@fontsource/montserrat/files/montserrat-latin-700-normal.woff"),
+  // Some imported templates call this face Arial Black. Use the bundled bold
+  // Montserrat face so rendering is deterministic inside the Linux worker.
+  "Arial-Black.ttf":
+    require.resolve("@fontsource/montserrat/files/montserrat-latin-700-normal.woff"),
   "PlayfairDisplay-Bold.ttf":
     require.resolve("@fontsource/playfair-display/files/playfair-display-latin-700-normal.woff"),
   "Anton-Regular.ttf": join(__dirname, "fonts", "Anton-Regular.ttf"),
@@ -42,7 +46,7 @@ const fontFiles: Record<string, string> = {
 const vectorFontCache = new Map<string, Promise<opentype.Font>>();
 
 function vectorFont(file?: string): Promise<opentype.Font> | undefined {
-  if (!file || !fontFiles[file]?.toLowerCase().endsWith(".ttf")) return;
+  if (!file || !fontFiles[file]) return;
   let cached = vectorFontCache.get(file);
   if (!cached) {
     cached = readFile(fontFiles[file]).then((bytes) =>
@@ -56,6 +60,27 @@ function vectorFont(file?: string): Promise<opentype.Font> | undefined {
     vectorFontCache.set(file, cached);
   }
   return cached;
+}
+
+const FALLBACK_FONT_FILE = "Montserrat-Regular.ttf";
+
+function supportsText(font: opentype.Font, value: string): boolean {
+  return [...value].every(
+    (character) => /\s/u.test(character) || font.charToGlyphIndex(character) !== 0,
+  );
+}
+
+function textSupportedBy(font: opentype.Font, value: string): string {
+  // Emoji and uncommon symbols are not present in the bundled poster fonts.
+  // Dropping only those unsupported code points is preferable to emitting the
+  // visible `.notdef` square that makes the event details appear corrupted.
+  return [...value]
+    .filter(
+      (character) => /\s/u.test(character) || font.charToGlyphIndex(character) !== 0,
+    )
+    .join("")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 const esc = (value: unknown) =>
@@ -137,6 +162,7 @@ async function fontCss(template: PosterTemplate): Promise<string> {
       .filter((field) => field.enabled && field.fontFile)
       .map((field) => field.fontFile!),
   );
+  requested.add(FALLBACK_FONT_FILE);
   const rules = await Promise.all(
     [...requested].map(async (file) => {
       const path = fontFiles[file];
@@ -198,11 +224,20 @@ async function overlaySvg(template: PosterTemplate, event: PosterEventData) {
       nodes.push(
         `<filter id="shadow-${name}" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="${shadow.offsetX}" dy="${shadow.offsetY}" stdDeviation="${shadow.blur / 2}" flood-color="${shadow.color}" flood-opacity="${shadow.opacity}"/></filter>`,
       );
-    const font = await vectorFont(field.fontFile);
-    if (font) {
+    const preferredFont = await vectorFont(field.fontFile);
+    const fallbackFont = await vectorFont(FALLBACK_FONT_FILE);
+    if (preferredFont || fallbackFont) {
       const vectorLetterSpacing = (field.letterSpacing || 0) / size;
       lines.forEach((line, index) => {
-        const lineWidth = font.getAdvanceWidth(line, size, {
+        const font =
+          preferredFont && supportsText(preferredFont, line)
+            ? preferredFont
+            : fallbackFont || preferredFont!;
+        const renderableLine = supportsText(font, line)
+          ? line
+          : textSupportedBy(font, line);
+        if (!renderableLine) return;
+        const lineWidth = font.getAdvanceWidth(renderableLine, size, {
           letterSpacing: vectorLetterSpacing,
         });
         const pathX =
@@ -212,7 +247,7 @@ async function overlaySvg(template: PosterTemplate, event: PosterEventData) {
               ? textX - lineWidth
               : textX;
         const path = font.getPath(
-          line,
+          renderableLine,
           pathX,
           y + offset + size + index * lineHeight,
           size,
