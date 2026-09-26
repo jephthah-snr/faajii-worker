@@ -8,6 +8,7 @@ export interface Recipient {
   locale?: string;
   timezone?: string;
   templateData: Record<string, unknown>;
+  inlineImages?: Array<{ cid: string; mimeType: string; contentBase64: string }>;
 }
 
 export interface ReminderEvent {

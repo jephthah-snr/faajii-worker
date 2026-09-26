@@ -22,6 +22,11 @@ export class EmailProvider {
       from: { address: config.MAIL_FROM_ADDRESS, name: config.MAIL_FROM_NAME },
       to: [{ email_address: { address: message.recipient.email } }],
       subject,
+      ...(message.recipient.inlineImages?.length ? {
+        inline_images: message.recipient.inlineImages.map(image => ({
+          cid: image.cid, mime_type: image.mimeType, content: image.contentBase64,
+        })),
+      } : {}),
       textbody: text,
       htmlbody: html || `<p>${text}</p>`,
     }, {
