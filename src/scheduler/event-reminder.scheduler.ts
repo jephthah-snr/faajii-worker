@@ -6,14 +6,15 @@ import { logger } from '../core/logger.js';
 import { JobRunner } from './job-runner.js';
 
 export class EventReminderScheduler {
-  private midnight?: Cron;
+  private refresh?: Cron;
+  private readonly dispatched = new Map<string, number>();
   private readonly reminders = new Map<string, Cron>();
 
   constructor(private readonly runner: JobRunner, private readonly backend: BackendClient) {}
 
   async start(): Promise<void> {
     if (!config.EVENT_REMINDERS_ENABLED) return;
-    this.midnight = new Cron('0 0 * * *', { timezone: config.APP_TIMEZONE, protect: true }, () => void this.scheduleDay().catch(this.logFailure));
+    this.refresh = new Cron('0 * * * *', { timezone: config.APP_TIMEZONE, protect: true }, async () => { await this.scheduleDay().catch(this.logFailure); });
     await this.scheduleDay();
     logger.info({ timezone: config.APP_TIMEZONE }, 'Daily event reminder scheduler started');
   }
@@ -21,24 +22,34 @@ export class EventReminderScheduler {
   async scheduleDay(now = new Date()): Promise<number> {
     const local = DateTime.fromJSDate(now).setZone(config.APP_TIMEZONE);
     const start = local.startOf('day');
-    const end = start.plus({ days: 1 });
+    // Include tomorrow's first 30 minutes so reminders before midnight are discovered.
+    const end = start.plus({ days: 1, minutes: 30 });
     const events = await this.backend.fetchReminderEvents({
       targetDate: start.toISODate()!,
       windowStart: start.toUTC().toISO()!,
       windowEnd: end.toUTC().toISO()!,
     });
+    const activeKeys = new Set(events.map(event => `${event.id}:${DateTime.fromISO(event.startDate, { setZone: true }).toUTC().toISO()}`));
+    for (const [key, task] of this.reminders) {
+      if (!activeKeys.has(key)) { task.stop(); this.reminders.delete(key); }
+    }
+    for (const [key, startsAt] of this.dispatched) {
+      if (startsAt <= now.getTime()) this.dispatched.delete(key);
+    }
     let scheduled = 0;
     for (const event of events) {
       const startAt = DateTime.fromISO(event.startDate, { setZone: true });
       if (!startAt.isValid || startAt.toMillis() <= now.getTime()) continue;
       const due = startAt.minus({ minutes: 30 });
       const key = `${event.id}:${startAt.toUTC().toISO()}`;
-      if (this.reminders.has(key)) continue;
+      if (this.reminders.has(key) || this.dispatched.has(key)) continue;
       if (due.toMillis() <= now.getTime()) {
+        this.dispatched.set(key, startAt.toMillis());
         void this.runner.runEventReminder(event.id, due.toJSDate()).catch(this.logFailure);
       } else {
         const task = new Cron(due.toJSDate(), () => {
           this.reminders.delete(key);
+          this.dispatched.set(key, startAt.toMillis());
           void this.runner.runEventReminder(event.id, due.toJSDate()).catch(this.logFailure);
         });
         this.reminders.set(key, task);
@@ -50,9 +61,10 @@ export class EventReminderScheduler {
   }
 
   stop(): void {
-    this.midnight?.stop();
+    this.refresh?.stop();
     for (const reminder of this.reminders.values()) reminder.stop();
     this.reminders.clear();
+    this.dispatched.clear();
   }
 
   private readonly logFailure = (error: unknown) => logger.error({ error }, 'Event reminder scheduling failed');
